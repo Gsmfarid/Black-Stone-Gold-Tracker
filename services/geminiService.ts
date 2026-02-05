@@ -2,7 +2,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { PricePoint, GroundingSource, CURRENCY_MAP, PriceHistoryItem } from "../types.ts";
 
-// Public reliable endpoints for gold and currency
 const GOLD_PRICE_API = "https://api.gold-api.com/price/XAU";
 const CURRENCY_API = "https://open.er-api.com/v6/latest/USD";
 
@@ -11,7 +10,6 @@ export async function fetchGoldMarketData(): Promise<{
   sources: GroundingSource[];
   summary: string;
 }> {
-  // 1. Fetch live gold price and currency rates first (Core functionality)
   let basePriceUSD = 0;
   let rates: Record<string, number> = {};
 
@@ -21,7 +19,7 @@ export async function fetchGoldMarketData(): Promise<{
       fetch(CURRENCY_API)
     ]);
 
-    if (!goldRes.ok || !ratesRes.ok) throw new Error("Price API connection failed");
+    if (!goldRes.ok || !ratesRes.ok) throw new Error("API Connection Failed");
 
     const goldData = await goldRes.json();
     const ratesData = await ratesRes.json();
@@ -29,11 +27,10 @@ export async function fetchGoldMarketData(): Promise<{
     basePriceUSD = goldData.price;
     rates = ratesData.rates;
   } catch (error) {
-    console.error("Failed to fetch core market data:", error);
-    throw new Error("সরাসরি বাজারের তথ্য পাওয়া যাচ্ছে না। আপনার ইন্টারনেট চেক করুন।");
+    console.error("Critical market data fetch failed:", error);
+    throw new Error("বাজারের তথ্য পাওয়া যাচ্ছে না। ইন্টারনেট সংযোগ পরীক্ষা করুন।");
   }
 
-  // 2. Generate 12-day pseudo-historical data for charts
   const generateHistory = (currentPrice: number): PriceHistoryItem[] => {
     return Array.from({ length: 12 }).map((_, i) => {
       const date = new Date();
@@ -51,7 +48,6 @@ export async function fetchGoldMarketData(): Promise<{
     });
   };
 
-  // 3. Map data to each supported currency
   const prices: PricePoint[] = Object.keys(CURRENCY_MAP).map(code => {
     const rate = rates[code] || 1;
     const localPrice = basePriceUSD * rate;
@@ -67,20 +63,17 @@ export async function fetchGoldMarketData(): Promise<{
     };
   });
 
-  // 4. Attempt to get AI Summary (Non-blocking)
-  let summary = "বাজার বর্তমানে স্বাভাবিক ওঠানামার মধ্যে রয়েছে। বিস্তারিত বিশ্লেষণের জন্য আপনার এপিআই কোটা চেক করুন।";
+  let summary = "";
   let sources: GroundingSource[] = [];
 
   try {
     const apiKey = process.env.API_KEY;
-    if (apiKey) {
+    if (apiKey && apiKey.length > 5) {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: "Analyze global gold market trends for today briefly in English. Mention inflation and central bank impact.",
-        config: {
-          tools: [{ googleSearch: {} }]
-        }
+        contents: "Briefly summarize current global gold market trends in 2 sentences in English.",
+        config: { tools: [{ googleSearch: {} }] }
       });
 
       if (response.text) {
@@ -91,16 +84,14 @@ export async function fetchGoldMarketData(): Promise<{
       sources = rawSources
         .filter((chunk: any) => chunk.web)
         .map((chunk: any) => ({
-          title: chunk.web.title || "Market News",
+          title: chunk.web.title || "Market Source",
           uri: chunk.web.uri
         }));
     }
-  } catch (aiError: any) {
-    // If AI fails due to quota (429) or other errors, we log it but don't crash the app
-    console.warn("AI Market Summary unavailable (likely quota limit):", aiError.message);
-    if (aiError.message?.includes("429") || aiError.message?.includes("quota")) {
-      summary = "AI বিশ্লেষণের ফ্রি লিমিট শেষ হয়ে গেছে। তবে উপরের লাইভ রেটগুলো সঠিক এবং আপডেট করা হয়েছে।";
-    }
+  } catch (aiError) {
+    // Fail silently - don't show error text in the summary box
+    summary = "";
+    sources = [];
   }
 
   return { prices, sources, summary };

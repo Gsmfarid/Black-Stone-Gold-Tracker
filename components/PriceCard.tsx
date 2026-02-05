@@ -68,7 +68,6 @@ export const PriceCard: React.FC<PriceCardProps> = ({ data, unit, quantity }) =>
     }
   };
 
-  // Custom Tooltip component to ensure visibility and clear OHLC data
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       const item = payload[0].payload;
@@ -101,7 +100,6 @@ export const PriceCard: React.FC<PriceCardProps> = ({ data, unit, quantity }) =>
 
   return (
     <div className="card-blur p-5 rounded-3xl transition-all duration-500 hover:shadow-2xl hover:shadow-yellow-500/10 hover:border-yellow-500/40 group flex flex-col h-full overflow-hidden">
-      {/* Header */}
       <div className="flex justify-between items-start mb-6">
         <div>
           <h3 className="text-2xl font-black text-white group-hover:text-yellow-500 transition-colors flex items-center gap-2">
@@ -118,13 +116,11 @@ export const PriceCard: React.FC<PriceCardProps> = ({ data, unit, quantity }) =>
         </div>
       </div>
 
-      {/* Karat Toggle */}
       <div className="flex bg-black/40 p-1 rounded-xl mb-4 border border-zinc-800/50 self-start">
         <button onClick={() => setSelectedKarat('24K')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedKarat === '24K' ? 'bg-yellow-500 text-black' : 'text-zinc-500'}`}>24K</button>
         <button onClick={() => setSelectedKarat('22K')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedKarat === '22K' ? 'bg-zinc-700 text-white' : 'text-zinc-500'}`}>22K</button>
       </div>
 
-      {/* Pricing Display */}
       <div className="flex flex-col flex-grow">
         <div className={`p-4 rounded-2xl border transition-all duration-500 ${selectedKarat === '24K' ? 'bg-gradient-to-br from-yellow-500/10 to-transparent border-yellow-500/20 shadow-xl' : 'bg-zinc-900/40 border-zinc-800/50'}`}>
           <div className="flex justify-between items-baseline mb-3">
@@ -147,25 +143,23 @@ export const PriceCard: React.FC<PriceCardProps> = ({ data, unit, quantity }) =>
         </div>
       </div>
 
-      {/* Candlestick Chart */}
-      <div className="mt-6 h-36 w-full relative">
+      {/* FIXED: Added minWidth and minHeight to ResponsiveContainer to stop warnings */}
+      <div className="mt-6 h-36 w-full relative min-h-[144px]">
         <div className="absolute top-0 left-0 text-[8px] font-bold text-zinc-600 uppercase tracking-widest flex items-center gap-1 z-10">
           <Info size={8} /> ক্যান্ডেলস্টিক চার্ট (১২ দিন)
         </div>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={144}>
           <ComposedChart data={chartData} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
             <CartesianGrid strokeDasharray="1 4" vertical={false} stroke="#27272a" />
             <XAxis dataKey="name" hide />
             <YAxis domain={['auto', 'auto']} hide />
             <Tooltip content={<CustomTooltip />} />
             
-            {/* The Wick (High/Low) */}
             <Bar dataKey="wick" barSize={1} isAnimationActive={false}>
               {chartData.map((entry, index) => (
                 <Cell key={`cell-wick-${index}`} fill={entry.isUp ? COLOR_UP : COLOR_DOWN} />
               ))}
             </Bar>
-            {/* The Body (Open/Close) */}
             <Bar dataKey="body" barSize={8} radius={[1, 1, 1, 1]} isAnimationActive={false}>
               {chartData.map((entry, index) => (
                 <Cell key={`cell-body-${index}`} fill={entry.isUp ? COLOR_UP : COLOR_DOWN} />
