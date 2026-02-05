@@ -1,10 +1,8 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { PricePoint, GroundingSource, CURRENCY_MAP, PriceHistoryItem } from "../types";
+import { PricePoint, GroundingSource, CURRENCY_MAP, PriceHistoryItem } from "../types.ts";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-
-// Public reliable endpoints for unlimited/high-limit free data
+// Public reliable endpoints for gold and currency
 const GOLD_PRICE_API = "https://api.gold-api.com/price/XAU";
 const CURRENCY_API = "https://open.er-api.com/v6/latest/USD";
 
@@ -13,81 +11,97 @@ export async function fetchGoldMarketData(): Promise<{
   sources: GroundingSource[];
   summary: string;
 }> {
+  // 1. Fetch live gold price and currency rates first (Core functionality)
+  let basePriceUSD = 0;
+  let rates: Record<string, number> = {};
+
   try {
-    // 1. Fetch base gold price in USD (Open Source Public API)
-    const goldRes = await fetch(GOLD_PRICE_API);
+    const [goldRes, ratesRes] = await Promise.all([
+      fetch(GOLD_PRICE_API),
+      fetch(CURRENCY_API)
+    ]);
+
+    if (!goldRes.ok || !ratesRes.ok) throw new Error("Price API connection failed");
+
     const goldData = await goldRes.json();
-    const basePriceUSD = goldData.price; // Price per Troy Ounce
-
-    // 2. Fetch latest currency rates
-    const ratesRes = await fetch(CURRENCY_API);
     const ratesData = await ratesRes.json();
-    const rates = ratesData.rates;
+    
+    basePriceUSD = goldData.price;
+    rates = ratesData.rates;
+  } catch (error) {
+    console.error("Failed to fetch core market data:", error);
+    throw new Error("সরাসরি বাজারের তথ্য পাওয়া যাচ্ছে না। আপনার ইন্টারনেট চেক করুন।");
+  }
 
-    // 3. Process data for each currency in our map
-    const prices: PricePoint[] = Object.entries(CURRENCY_MAP).map(([code, meta]) => {
-      const rate = rates[code] || 1;
-      const priceInCurrency = basePriceUSD * rate;
-      
-      // Generate realistic OHLC history
-      const history: PriceHistoryItem[] = Array.from({ length: 12 }).map((_, i) => {
-        const volatility = (Math.random() - 0.5) * 0.015; // daily movement
-        const dayPrice = priceInCurrency * (1 + (volatility * (11 - i)));
-        
-        const open = dayPrice * (1 + (Math.random() - 0.5) * 0.005);
-        const close = dayPrice * (1 + (Math.random() - 0.5) * 0.005);
-        const high = Math.max(open, close) * (1 + Math.random() * 0.003);
-        const low = Math.min(open, close) * (1 - Math.random() * 0.003);
-
-        const date = new Date();
-        date.setDate(date.getDate() - (11 - i));
-        return {
-          date: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-          open,
-          high,
-          low,
-          close
-        };
-      });
-
+  // 2. Generate 12-day pseudo-historical data for charts
+  const generateHistory = (currentPrice: number): PriceHistoryItem[] => {
+    return Array.from({ length: 12 }).map((_, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (11 - i));
+      const variance = (Math.random() - 0.5) * (currentPrice * 0.02);
+      const open = currentPrice + variance;
+      const close = open + (Math.random() - 0.5) * (currentPrice * 0.01);
       return {
-        currency: code,
-        symbol: meta.symbol,
-        country: meta.country,
-        price: priceInCurrency,
-        change24h: (Math.random() * 1.5 - 0.75),
-        history: history,
+        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        open,
+        high: Math.max(open, close) + Math.random() * 5,
+        low: Math.min(open, close) - Math.random() * 5,
+        close,
       };
     });
+  };
 
-    // 4. Use Gemini for summary
-    const model = 'gemini-3-flash-preview';
-    const analysisPrompt = `
-      The current spot price of gold is approximately $${basePriceUSD.toFixed(2)} USD per troy ounce. 
-      Provide a very brief (max 2 sentences) professional market sentiment 
-      summary in Bengali for a gold tracking dashboard. Focus on buying advice.
-    `;
+  // 3. Map data to each supported currency
+  const prices: PricePoint[] = Object.keys(CURRENCY_MAP).map(code => {
+    const rate = rates[code] || 1;
+    const localPrice = basePriceUSD * rate;
+    const change = (Math.random() - 0.4) * 1.5;
+    
+    return {
+      currency: code,
+      symbol: CURRENCY_MAP[code].symbol,
+      country: CURRENCY_MAP[code].country,
+      price: localPrice,
+      change24h: change,
+      history: generateHistory(localPrice),
+    };
+  });
 
-    let summary = "সোনার বাজার বর্তমানে স্থিতিশীল রয়েছে।";
-    try {
-      const result = await ai.models.generateContent({
-        model,
-        contents: analysisPrompt,
-        config: { temperature: 0.7 }
+  // 4. Attempt to get AI Summary (Non-blocking)
+  let summary = "বাজার বর্তমানে স্বাভাবিক ওঠানামার মধ্যে রয়েছে। বিস্তারিত বিশ্লেষণের জন্য আপনার এপিআই কোটা চেক করুন।";
+  let sources: GroundingSource[] = [];
+
+  try {
+    const apiKey = process.env.API_KEY;
+    if (apiKey) {
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: "Analyze global gold market trends for today briefly in English. Mention inflation and central bank impact.",
+        config: {
+          tools: [{ googleSearch: {} }]
+        }
       });
-      summary = result.text || summary;
-    } catch (e) {
-      console.warn("Gemini analysis failed", e);
+
+      if (response.text) {
+        summary = response.text;
+      }
+      
+      const rawSources = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+      sources = rawSources
+        .filter((chunk: any) => chunk.web)
+        .map((chunk: any) => ({
+          title: chunk.web.title || "Market News",
+          uri: chunk.web.uri
+        }));
     }
-
-    const sources: GroundingSource[] = [
-      { title: "Gold-API Public Data", uri: "https://gold-api.com" },
-      { title: "ExchangeRate-API (Open Source)", uri: "https://www.exchangerate-api.com" }
-    ];
-
-    return { prices, sources, summary: summary.trim() };
-  } catch (error) {
-    console.error("Error in open source data fetch:", error);
-    throw error;
+  } catch (aiError: any) {
+    // If AI fails due to quota (429) or other errors, we log it but don't crash the app
+    console.warn("AI Market Summary unavailable (likely quota limit):", aiError.message);
+    if (aiError.message?.includes("429") || aiError.message?.includes("quota")) {
+      summary = "AI বিশ্লেষণের ফ্রি লিমিট শেষ হয়ে গেছে। তবে উপরের লাইভ রেটগুলো সঠিক এবং আপডেট করা হয়েছে।";
+    }
   }
+
+  return { prices, sources, summary };
 }
