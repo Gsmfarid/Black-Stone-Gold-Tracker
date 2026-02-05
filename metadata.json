@@ -1,0 +1,5 @@
+{
+  "name": "Black Stone Gold Tracker",
+  "description": "A premium, real-time gold price monitoring dashboard powered by Gemini Search Grounding. Tracks global spot prices across multiple currencies with automated live updates and market analysis.",
+  "requestFramePermissions": []
+}

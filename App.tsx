@@ -1,0 +1,137 @@
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { MarketState, UnitType } from './types';
+import { fetchGoldMarketData } from './services/geminiService';
+import { Header } from './components/Header';
+import { PriceCard } from './components/PriceCard';
+import { MarketAnalysis } from './components/MarketAnalysis';
+
+const App: React.FC = () => {
+  const [state, setState] = useState<MarketState>({
+    prices: [],
+    lastUpdated: new Date(),
+    sources: [],
+    summary: '',
+    isLoading: true,
+    error: null,
+  });
+
+  const [unit, setUnit] = useState<UnitType>('vori');
+  const [quantity, setQuantity] = useState<number>(1);
+
+  const updateMarketData = useCallback(async () => {
+    setState(prev => ({ ...prev, isLoading: true }));
+    try {
+      const data = await fetchGoldMarketData();
+      setState({
+        prices: data.prices,
+        lastUpdated: new Date(),
+        sources: data.sources,
+        summary: data.summary,
+        isLoading: false,
+        error: null,
+      });
+    } catch (err: any) {
+      setState(prev => ({ 
+        ...prev, 
+        isLoading: false, 
+        error: "Failed to fetch live market data. Retrying shortly..." 
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    updateMarketData();
+    const interval = setInterval(updateMarketData, 60000);
+    return () => clearInterval(interval);
+  }, [updateMarketData]);
+
+  const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    setQuantity(isNaN(val) ? 0 : val);
+  };
+
+  return (
+    <div className="min-h-screen p-6 md:p-12 lg:p-16 max-w-7xl mx-auto">
+      <Header lastUpdated={state.lastUpdated} isLoading={state.isLoading} />
+
+      {state.error && (
+        <div className="mb-8 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-sm flex items-center gap-3">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          {state.error}
+        </div>
+      )}
+
+      {/* Interactive Control Bar */}
+      <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center mb-10 gap-6 bg-zinc-900/40 p-6 rounded-3xl border border-zinc-800/50 backdrop-blur-sm">
+        <div className="flex flex-col sm:flex-row gap-6 items-center">
+          <div className="w-full sm:w-auto">
+            <label className="block text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-2 ml-1">Quantity / পরিমাণ</label>
+            <div className="relative group">
+              <input 
+                type="number" 
+                value={quantity}
+                onChange={handleQuantityChange}
+                min="0"
+                step="0.01"
+                className="bg-black/60 border border-zinc-800 rounded-xl px-4 py-2.5 w-full sm:w-32 font-mono text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 transition-all text-lg"
+                placeholder="0.00"
+              />
+              <div className="absolute inset-0 rounded-xl bg-yellow-500/5 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity"></div>
+            </div>
+          </div>
+
+          <div className="w-full sm:w-auto">
+            <label className="block text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-2 ml-1">Measurement Unit / পরিমাপের একক</label>
+            <div className="flex gap-1 p-1 bg-black/60 rounded-xl border border-zinc-800">
+              {(['vori', 'g', 'kg', 'oz'] as UnitType[]).map((u) => (
+                <button
+                  key={u}
+                  onClick={() => setUnit(u)}
+                  className={`px-4 lg:px-6 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
+                    unit === u 
+                      ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20' 
+                      : 'text-zinc-500 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  {u === 'vori' ? 'ভরি (Vori)' : u === 'oz' ? 'Oz' : u === 'g' ? 'Gram' : 'KG'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex flex-col items-end">
+          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-1">Market Velocity</p>
+          <div className="flex items-center gap-2 text-xs text-zinc-400 font-medium">
+            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+            Auto-refreshing global spot prices
+          </div>
+        </div>
+      </div>
+
+      {/* Grid of Prices */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {state.prices.length > 0 ? (
+          state.prices.map((price) => (
+            <PriceCard key={price.currency} data={price} unit={unit} quantity={quantity} />
+          ))
+        ) : (
+          Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="card-blur p-6 rounded-2xl h-64 animate-pulse bg-zinc-900/50"></div>
+          ))
+        )}
+      </div>
+
+      <MarketAnalysis summary={state.summary} sources={state.sources} />
+
+      <footer className="mt-20 pt-8 border-t border-zinc-800/50 text-center text-zinc-600 text-[10px] uppercase tracking-[0.3em] font-bold">
+        Black Stone Intelligence • Real-Time Bullion Oracle • {new Date().getFullYear()}
+      </footer>
+    </div>
+  );
+};
+
+export default App;
