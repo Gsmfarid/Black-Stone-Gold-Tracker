@@ -1,10 +1,19 @@
 
+export interface PriceHistoryItem {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
 export interface PricePoint {
   currency: string;
   symbol: string;
   price: number;
   change24h: number;
   country: string;
+  history: PriceHistoryItem[];
 }
 
 export interface GroundingSource {
